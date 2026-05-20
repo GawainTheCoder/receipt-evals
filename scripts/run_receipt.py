@@ -1,4 +1,4 @@
-from receipt_evals.workflow import main
+from receipt_review.workflow import main
 
 
 if __name__ == "__main__":

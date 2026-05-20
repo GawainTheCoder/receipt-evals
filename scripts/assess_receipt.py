@@ -55,22 +55,19 @@ def print_field(label: str, expected: Any, actual: Any) -> None:
 
 
 def resolve_output_paths(path: Path) -> tuple[Path, Path, str]:
-    name = path.name
-    if name.endswith(".extraction.json"):
-        image_stem = name.removesuffix(".extraction.json")
-        return path, path.with_name(f"{image_stem}.audit.json"), image_stem
-    if name.endswith(".audit.json"):
-        image_stem = name.removesuffix(".audit.json")
-        return path.with_name(f"{image_stem}.extraction.json"), path, image_stem
+    if path.parent.name == "extraction" and path.suffix == ".json":
+        return path, path.parent.parent / "audit_results" / path.name, path.stem
+    if path.parent.name == "audit_results" and path.suffix == ".json":
+        return path.parent.parent / "extraction" / path.name, path, path.stem
     if path.suffix.casefold() in {".jpg", ".jpeg", ".png", ".webp"}:
         image_stem = path.stem
         output_dir = Path("outputs/reviews")
         return (
-            output_dir / f"{image_stem}.extraction.json",
-            output_dir / f"{image_stem}.audit.json",
+            output_dir / "extraction" / f"{image_stem}.json",
+            output_dir / "audit_results" / f"{image_stem}.json",
             image_stem,
         )
-    raise ValueError("Expected an extraction output, audit output, or source image path.")
+    raise ValueError("Expected a source image path or a JSON file under extraction/ or audit_results/.")
 
 
 def main() -> None:

@@ -10,7 +10,7 @@ from typing import TypeVar
 from openai import OpenAI
 from pydantic import BaseModel
 
-from receipt_evals.config import Settings, load_settings
+from receipt_review.config import Settings, load_settings
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 

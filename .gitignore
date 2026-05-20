@@ -4,4 +4,4 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-outputs/reviews/*.json
+outputs/
