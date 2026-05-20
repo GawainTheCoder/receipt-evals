@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 
 from receipt_review.config import load_settings
-from receipt_review.domain.schemas import ReceiptReviewResult, ReviewModels
+from receipt_review.image_preflight import prepare_receipt_image
 from receipt_review.llm.openai_client import get_client
+from receipt_review.schemas import ReceiptReviewResult, ReviewModels
 from receipt_review.steps.audit import evaluate_receipt_for_audit
 from receipt_review.steps.extraction import extract_receipt_details
 
@@ -14,8 +15,9 @@ from receipt_review.steps.extraction import extract_receipt_details
 def review_receipt(image_path: str | Path) -> ReceiptReviewResult:
     settings = load_settings()
     client = get_client(settings)
+    prepared_image_path = prepare_receipt_image(image_path)
     receipt_details = extract_receipt_details(
-        image_path,
+        prepared_image_path,
         client=client,
         model=settings.extraction_model,
     )

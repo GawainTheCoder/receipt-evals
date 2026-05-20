@@ -3,7 +3,7 @@ from __future__ import annotations
 from openai import OpenAI
 
 from receipt_review.config import load_settings
-from receipt_review.domain.schemas import AuditDecision, ReceiptDetails
+from receipt_review.schemas import AuditDecision, ReceiptDetails
 from receipt_review.llm.openai_client import create_structured_response, get_client
 
 
