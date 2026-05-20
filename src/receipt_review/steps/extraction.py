@@ -5,7 +5,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from receipt_review.config import load_settings
-from receipt_review.domain.schemas import ReceiptDetails, ReceiptItem
+from receipt_review.schemas import ReceiptDetails, ReceiptItem
 from receipt_review.llm.openai_client import create_structured_response, get_client, image_to_data_url
 
 
