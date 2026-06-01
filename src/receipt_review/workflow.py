@@ -38,12 +38,19 @@ def review_receipt(image_path: str | Path) -> ReceiptReviewResult:
     )
 
 
-def output_paths_for(image_path: str | Path, output_dir: str | Path = "outputs/reviews") -> tuple[Path, Path]:
+def output_paths_for(
+    image_path: str | Path,
+    output_dir: str | Path = "outputs/reviews",
+    *,
+    copy_number: int | None = None,
+) -> tuple[Path, Path]:
     output_path = Path(output_dir)
     image_stem = Path(image_path).stem
+    suffix = f" ({copy_number})" if copy_number is not None else ""
+    output_filename = f"{image_stem}{suffix}.json"
     return (
-        output_path / "extraction" / f"{image_stem}.json",
-        output_path / "audit_results" / f"{image_stem}.json",
+        output_path / "extraction" / output_filename,
+        output_path / "audit_results" / output_filename,
     )
 
 
@@ -52,7 +59,15 @@ def save_review_outputs(
     output_dir: str | Path = "outputs/reviews",
 ) -> tuple[Path, Path]:
     output_path = Path(output_dir)
+    copy_number = None
     extraction_path, audit_path = output_paths_for(result.image_path, output_path)
+    while extraction_path.exists() or audit_path.exists():
+        copy_number = 1 if copy_number is None else copy_number + 1
+        extraction_path, audit_path = output_paths_for(
+            result.image_path,
+            output_path,
+            copy_number=copy_number,
+        )
     extraction_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     extraction_path.write_text(result.receipt_details.model_dump_json(indent=2) + "\n", encoding="utf-8")

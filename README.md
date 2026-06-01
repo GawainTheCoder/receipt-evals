@@ -39,11 +39,13 @@ https://universe.roboflow.com/newreceipts/receipt-handwriting-detection
 uv run python scripts/run_receipt.py data/test/Gas_20240605_164059_Raven_Scan_3_jpeg.rf.e3408aa2b936afd1f1aed84fa40d454e.jpg
 ```
 
-The command writes separate extraction and audit JSON files:
+The command writes separate extraction and audit JSON files. Repeated runs are preserved with numbered filenames so model variability can be assessed:
 
 ```text
 outputs/reviews/extraction/<receipt-stem>.json
+outputs/reviews/extraction/<receipt-stem> (1).json
 outputs/reviews/audit_results/<receipt-stem>.json
+outputs/reviews/audit_results/<receipt-stem> (1).json
 ```
 
 ## Assess One Output

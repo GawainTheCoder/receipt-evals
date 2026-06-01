@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -56,18 +57,25 @@ def print_field(label: str, expected: Any, actual: Any) -> None:
 
 def resolve_output_paths(path: Path) -> tuple[Path, Path, str]:
     if path.parent.name == "extraction" and path.suffix == ".json":
-        return path, path.parent.parent / "audit_results" / path.name, path.stem
+        return path, path.parent.parent / "audit_results" / path.name, base_receipt_stem(path.stem)
     if path.parent.name == "audit_results" and path.suffix == ".json":
-        return path.parent.parent / "extraction" / path.name, path, path.stem
+        return path.parent.parent / "extraction" / path.name, path, base_receipt_stem(path.stem)
     if path.suffix.casefold() in {".jpg", ".jpeg", ".png", ".webp"}:
         image_stem = path.stem
         output_dir = Path("outputs/reviews")
-        return (
-            output_dir / "extraction" / f"{image_stem}.json",
-            output_dir / "audit_results" / f"{image_stem}.json",
-            image_stem,
-        )
+        extraction_paths = sorted((output_dir / "extraction").glob(f"{image_stem}*.json"))
+        if len(extraction_paths) != 1:
+            raise ValueError(
+                f"Expected exactly one saved review run for {image_stem!r}, found {len(extraction_paths)}. "
+                "Pass a specific extraction or audit JSON path."
+            )
+        extraction_path = extraction_paths[0]
+        return extraction_path, extraction_path.parent.parent / "audit_results" / extraction_path.name, image_stem
     raise ValueError("Expected a source image path or a JSON file under extraction/ or audit_results/.")
+
+
+def base_receipt_stem(stem: str) -> str:
+    return re.sub(r" \(\d+\)$", "", stem)
 
 
 def main() -> None:
