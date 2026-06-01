@@ -5,7 +5,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from receipt_review.config import load_settings
-from receipt_review.schemas import ReceiptDetails, ReceiptItem
+from receipt_review.schemas import ReceiptDetails
 from receipt_review.llm.openai_client import create_structured_response, get_client, image_to_data_url
 
 
@@ -34,7 +34,7 @@ def extract_receipt_details(
     active_client = client or get_client(settings)
     active_model = model or settings.extraction_model
 
-    receipt_details = create_structured_response(
+    return create_structured_response(
         client=active_client,
         model=active_model,
         schema_name="receipt_details",
@@ -50,37 +50,4 @@ def extract_receipt_details(
                 "image_url": image_to_data_url(image_path),
             },
         ],
-    )
-
-    return receipt_details.model_copy(update={"items": _clean_items(receipt_details)})
-
-
-def _clean_items(receipt_details: ReceiptDetails) -> list[ReceiptItem]:
-    return [
-        item
-        for item in receipt_details.items
-        if not _is_payment_summary_item(item, receipt_details.total)
-    ]
-
-
-def _is_payment_summary_item(item: ReceiptItem, receipt_total: str | None) -> bool:
-    if not item.description or not item.total or not receipt_total:
-        return False
-
-    payment_descriptions = {
-        "amex",
-        "cash",
-        "credit",
-        "debit",
-        "discover",
-        "mastercard",
-        "tender",
-        "visa",
-    }
-    normalized_description = item.description.strip().casefold()
-    normalized_total = item.total.strip()
-    normalized_receipt_total = receipt_total.strip()
-    return (
-        normalized_description in payment_descriptions
-        and normalized_total == normalized_receipt_total
     )

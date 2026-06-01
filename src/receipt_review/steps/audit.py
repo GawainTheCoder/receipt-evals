@@ -11,11 +11,12 @@ AUDIT_INSTRUCTIONS = """
 You decide whether a receipt should be sent to human audit.
 
 Use this v0 audit policy:
+- Travel-related expenses include gas, fuel, hotel, airfare, and car rental. If the receipt shows gas or fuel, not_travel_related is false.
 - not_travel_related is true when the merchant and purchased items are not travel-related.
 - amount_over_limit is true when the final total is greater than 50.00.
 - math_error is true when item totals, subtotal, tax, or final total appear inconsistent.
-- handwritten_x is true when handwritten notes contain an X, crossed-out mark, or similar explicit X annotation.
-- needs_audit is true if any policy flag is true or if the receipt details are too incomplete to decide safely.
+- handwritten_x is true when handwritten_notes contains an explicit handwritten "X".
+- needs_audit is true if any policy flag is true.
 
 Give concise reasoning grounded only in the structured receipt details provided.
 """.strip()

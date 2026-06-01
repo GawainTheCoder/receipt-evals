@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import base64
-import copy
-import json
 import mimetypes
 from pathlib import Path
 from typing import TypeVar
@@ -29,21 +27,6 @@ def image_to_data_url(image_path: str | Path) -> str:
     return f"data:{media_type};base64,{encoded}"
 
 
-def openai_strict_json_schema(schema_model: type[BaseModel]) -> dict:
-    schema = copy.deepcopy(schema_model.model_json_schema())
-
-    def clean(value: object) -> object:
-        if isinstance(value, dict):
-            if "$ref" in value:
-                return {"$ref": value["$ref"]}
-            return {key: clean(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [clean(item) for item in value]
-        return value
-
-    return clean(schema)
-
-
 def create_structured_response(
     *,
     client: OpenAI,
@@ -53,7 +36,9 @@ def create_structured_response(
     instructions: str,
     user_content: list[dict[str, str]],
 ) -> SchemaT:
-    response = client.responses.create(
+    # Use the SDK parser for the v0 baseline so schema generation and Pydantic
+    # parsing stay simple. Add custom schema handling only when evals justify it.
+    response = client.responses.parse(
         model=model,
         instructions=instructions,
         input=[
@@ -62,14 +47,10 @@ def create_structured_response(
                 "content": user_content,
             }
         ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": schema_name,
-                "schema": openai_strict_json_schema(schema_model),
-                "strict": True,
-            }
-        },
+        text_format=schema_model,
     )
 
-    return schema_model.model_validate(json.loads(response.output_text))
+    if response.output_parsed is None:
+        raise RuntimeError(f"Structured response parsing failed for schema {schema_name!r}.")
+
+    return response.output_parsed

@@ -26,7 +26,7 @@ src/receipt_review/
   workflow.py  # Composes the two steps and saves outputs
 ```
 
-If `tesseract` is installed locally, the workflow uses it to detect upside-down receipts and writes corrected copies to `outputs/preprocessed/` before extraction. If it is unavailable or uncertain, the original image is used unchanged.
+The optional image preflight module can use `tesseract` to detect upside-down receipts and write corrected copies to `outputs/preprocessed/`. It is currently paused so the v0 eval baseline measures extraction without preprocessing.
 
 ## Data Attribution
 
