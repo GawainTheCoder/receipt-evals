@@ -12,15 +12,13 @@ from receipt_review.llm.openai_client import create_structured_response, get_cli
 EXTRACTION_INSTRUCTIONS = """
 You extract structured receipt details from a receipt image.
 
-Return only facts visible in the image. Use null for unavailable scalar values and [] for unavailable lists.
-Preserve printed money and quantity values as strings without currency symbols.
-Represent each purchased charge as its own item, including fuel lines, debit fees, service fees, discounts, and non-product charges.
-Do not include tender lines, payment method lines, authorization lines, balance due lines, or repeated final total lines as items.
-Do not duplicate a fuel purchase as both a detailed unit-price/quantity line and a fuel-sale summary line; keep the detailed line.
-Transcribe handwritten notes separately from printed receipt text.
-Do not add printed receipt numbers, authorization codes, or register IDs to handwritten_notes unless they are clearly handwritten.
-If a handwritten annotation is an arrow, route, vehicle label, location label, number, or X mark, include it in handwritten_notes.
-Common handwritten labels in this dataset include sequoia, tundra, nissan, yos, home, vista, oakhurst, and route notes like vista->yos.
+- Return only facts visible in the image.
+- Use null for unavailable scalar values and [] for unavailable lists.
+- Preserve printed money and quantity values as strings without currency symbols.
+- Represent each purchased charge as its own item, including fuel lines, debit fees, service fees, discounts, and non-product charges.
+- Do not include tender lines, payment method lines, authorization lines, balance due lines, or repeated final total lines as items.
+- Do not duplicate a fuel purchase as both a detailed unit-price/quantity line and a fuel-sale summary line; keep the detailed line.
+- Transcribe handwritten notes separately from printed receipt text.
 """.strip()
 
 
