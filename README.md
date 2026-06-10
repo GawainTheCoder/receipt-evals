@@ -7,6 +7,11 @@ The system is intentionally two-step:
 1. `extract_receipt_details(image_path)` reads one receipt image and returns structured receipt data.
 2. `evaluate_receipt_for_audit(receipt_details)` decides whether the receipt should be audited.
 
+The audit step is split between the model and plain code. The LLM judges only
+`not_travel_related` and `handwritten_x`; `amount_over_limit` and `math_error`
+are computed deterministically from the extracted amounts, and `needs_audit` is
+the OR of the four flags (see `src/receipt_review/steps/audit.py`).
+
 ## Setup
 
 ```bash
@@ -27,6 +32,13 @@ src/receipt_review/
 ```
 
 The optional image preflight module can use `tesseract` to detect upside-down receipts and write corrected copies to `outputs/preprocessed/`. It is currently paused so the v0 eval baseline measures extraction without preprocessing.
+
+> **Note:** Everything under `outputs/` — saved review runs, the curated train
+> references the graders compare against, evaluation reports, and the built
+> comparison viewer — is intentionally untracked for now. These artifacts will
+> be shared alongside part 2 of the accompanying eval-driven development blog
+> series once it is close to done. Until then, running the eval scripts
+> requires generating your own runs and references locally.
 
 ## Data Attribution
 
@@ -57,3 +69,27 @@ uv run python scripts/assess_receipt.py outputs/reviews/extraction/Gas_20240605_
 ```
 
 This is not the full eval framework yet. It is a lightweight inspection helper so we can understand what should be measured before formalizing metrics.
+
+## Regenerate Audits Without Re-Extracting
+
+After changing the audit step, refresh saved audit outputs from the existing
+extraction JSONs (no extraction LLM calls; audit judgments are cached by
+extraction content in `outputs/cache/audit_judgments.json`):
+
+```bash
+uv run python scripts/rerun_audits.py
+```
+
+## Compare Runs in the Viewer
+
+Snapshot a run with `cp -R outputs/reviews outputs/runs/<label>`. By default
+`scripts/build_receipt_review_viewer.py` includes `outputs/reviews` (labeled
+`current`) plus every snapshot under `outputs/runs/`, and the viewer gets a
+"Review source" selector to compare them side by side:
+
+```bash
+uv run python scripts/build_receipt_review_viewer.py
+```
+
+To pick sources explicitly, pass repeated `--reviews-dir` arguments in
+`label=path` form.
