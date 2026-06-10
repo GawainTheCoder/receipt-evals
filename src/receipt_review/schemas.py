@@ -34,6 +34,18 @@ class ReceiptDetails(StrictModel):
     handwritten_notes: list[str]
 
 
+class AuditJudgment(StrictModel):
+    """The subset of audit fields that require LLM judgment.
+
+    amount_over_limit, math_error, and needs_audit are computed
+    deterministically in steps/audit.py, not by the model.
+    """
+
+    not_travel_related: bool
+    handwritten_x: bool
+    reasoning: str
+
+
 class AuditDecision(StrictModel):
     not_travel_related: bool
     amount_over_limit: bool
