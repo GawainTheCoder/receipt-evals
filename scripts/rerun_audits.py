@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from receipt_review.config import load_settings
@@ -28,6 +30,32 @@ def load_cache(cache_path: Path) -> dict[str, dict]:
     return {}
 
 
+def default_output_dir() -> Path:
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%f")
+    return Path("outputs/runs") / f"audit-rerun-{timestamp}"
+
+
+def assert_output_paths_are_clear(extraction_paths: list[Path], output_dir: Path) -> None:
+    existing_paths = [
+        target_path
+        for extraction_path in extraction_paths
+        for target_path in (
+            output_dir / "extraction" / extraction_path.name,
+            output_dir / "audit_results" / extraction_path.name,
+        )
+        if target_path.exists()
+    ]
+    if existing_paths:
+        formatted_paths = "\n".join(f"  {path}" for path in existing_paths[:10])
+        extra_count = len(existing_paths) - 10
+        suffix = f"\n  ...and {extra_count} more" if extra_count > 0 else ""
+        raise FileExistsError(
+            "Refusing to overwrite existing rerun outputs. "
+            "Choose a new --output-dir or pass --in-place to overwrite current audit files.\n"
+            f"{formatted_paths}{suffix}"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -37,17 +65,37 @@ def main() -> None:
         )
     )
     parser.add_argument("--reviews-dir", default="outputs/reviews")
+    parser.add_argument(
+        "--output-dir",
+        help=(
+            "Root directory for a regenerated review snapshot. Defaults to "
+            "outputs/runs/audit-rerun-<timestamp>. Cannot be used with --in-place."
+        ),
+    )
     parser.add_argument("--cache-file", default="outputs/cache/audit_judgments.json")
+    parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="Overwrite audit JSONs under --reviews-dir/audit_results instead of writing a preserved snapshot.",
+    )
     args = parser.parse_args()
+    if args.in_place and args.output_dir:
+        parser.error("--output-dir cannot be used with --in-place.")
 
     reviews_dir = Path(args.reviews_dir)
     extraction_dir = reviews_dir / "extraction"
-    audit_dir = reviews_dir / "audit_results"
-    audit_dir.mkdir(parents=True, exist_ok=True)
 
     extraction_paths = sorted(extraction_dir.glob("*.json"))
     if not extraction_paths:
         raise RuntimeError(f"No extraction JSONs found under {extraction_dir}.")
+
+    output_dir = reviews_dir if args.in_place else Path(args.output_dir) if args.output_dir else default_output_dir()
+    output_extraction_dir = output_dir / "extraction"
+    audit_dir = output_dir / "audit_results"
+    if not args.in_place:
+        assert_output_paths_are_clear(extraction_paths, output_dir)
+        output_extraction_dir.mkdir(parents=True, exist_ok=True)
+    audit_dir.mkdir(parents=True, exist_ok=True)
 
     settings = load_settings()
     client = get_client(settings)
@@ -68,6 +116,8 @@ def main() -> None:
 
         decision = compose_audit_decision(receipt_details, judgment)
         audit_path = audit_dir / extraction_path.name
+        if not args.in_place:
+            shutil.copy2(extraction_path, output_extraction_dir / extraction_path.name)
         audit_path.write_text(decision.model_dump_json(indent=2) + "\n", encoding="utf-8")
         print(f"Wrote {audit_path} (needs_audit={decision.needs_audit})")
 
@@ -78,6 +128,10 @@ def main() -> None:
         f"{cache_hits} judgment(s) from cache, {len(extraction_paths) - cache_hits} new LLM call(s)."
     )
     print(f"Judgment cache: {cache_path}")
+    if args.in_place:
+        print(f"Updated audit files in place: {audit_dir}")
+    else:
+        print(f"Review snapshot: {output_dir}")
 
 
 if __name__ == "__main__":
