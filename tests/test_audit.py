@@ -6,6 +6,7 @@ from decimal import Decimal
 from receipt_review.schemas import AuditJudgment, Location, ReceiptDetails, ReceiptItem
 from receipt_review.steps.audit import (
     check_amount_over_limit,
+    check_item_extraction_warning,
     check_math_error,
     compose_audit_decision,
     parse_amount,
@@ -92,7 +93,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertFalse(has_error)
         self.assertEqual(problems, [])
 
-    def test_math_error_flags_item_sum_mismatch(self) -> None:
+    def test_item_sum_mismatch_with_consistent_summary_is_warning_not_math_error(self) -> None:
         receipt = make_receipt(
             items=[
                 make_item(item_price="10.00", quantity="1", total="10.00"),
@@ -103,10 +104,13 @@ class DeterministicAuditChecksTest(unittest.TestCase):
             total="17.00",
         )
 
-        has_error, problems = check_math_error(receipt)
+        has_error, math_problems = check_math_error(receipt)
+        has_warning, warning_problems = check_item_extraction_warning(receipt)
 
-        self.assertTrue(has_error)
-        self.assertTrue(any("item totals sum" in problem for problem in problems))
+        self.assertFalse(has_error)
+        self.assertEqual(math_problems, [])
+        self.assertTrue(has_warning)
+        self.assertTrue(any("item totals sum" in problem for problem in warning_problems))
 
     def test_math_error_flags_subtotal_tax_total_mismatch(self) -> None:
         receipt = make_receipt(
@@ -134,7 +138,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertFalse(has_error)
         self.assertEqual(problems, [])
 
-    def test_line_total_check_flags_impossible_price_quantity_total(self) -> None:
+    def test_impossible_price_quantity_total_is_warning_not_math_error(self) -> None:
         receipt = make_receipt(
             items=[make_item(item_price="4.00", quantity="2", total="11.00")],
             subtotal=None,
@@ -142,10 +146,39 @@ class DeterministicAuditChecksTest(unittest.TestCase):
             total="11.00",
         )
 
+        has_error, math_problems = check_math_error(receipt)
+        has_warning, warning_problems = check_item_extraction_warning(receipt)
+
+        self.assertFalse(has_error)
+        self.assertEqual(math_problems, [])
+        self.assertTrue(has_warning)
+        self.assertTrue(any("matches no consistent reading" in problem for problem in warning_problems))
+
+    def test_math_error_flags_summary_mismatch_even_when_items_are_consistent(self) -> None:
+        receipt = make_receipt(
+            items=[make_item(item_price="15.00", quantity="1", total="15.00")],
+            subtotal="15.00",
+            tax="1.00",
+            total="15.50",
+        )
+
+        has_warning, warning_problems = check_item_extraction_warning(receipt)
+
+        self.assertFalse(has_warning)
+        self.assertEqual(warning_problems, [])
+
+    def test_math_error_uses_item_totals_only_when_subtotal_is_missing(self) -> None:
+        receipt = make_receipt(
+            items=[make_item(item_price="10.00", quantity="1", total="10.00")],
+            subtotal=None,
+            tax="1.00",
+            total="20.00",
+        )
+
         has_error, problems = check_math_error(receipt)
 
         self.assertTrue(has_error)
-        self.assertTrue(any("matches no consistent reading" in problem for problem in problems))
+        self.assertTrue(any("item totals sum" in problem and "total" in problem for problem in problems))
 
     def test_compose_audit_decision_ors_all_policy_flags(self) -> None:
         receipt = make_receipt(
@@ -166,6 +199,29 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertFalse(decision.math_error)
         self.assertTrue(decision.needs_audit)
         self.assertIn("Deterministic checks:", decision.reasoning)
+
+    def test_item_extraction_warning_does_not_feed_needs_audit(self) -> None:
+        receipt = make_receipt(
+            items=[
+                make_item(item_price="10.00", quantity="1", total="10.00"),
+                make_item(item_price="10.00", quantity="1", total="10.00"),
+            ],
+            subtotal="10.00",
+            tax="0.80",
+            total="10.80",
+        )
+        judgment = AuditJudgment(
+            not_travel_related=False,
+            handwritten_x=False,
+            reasoning="LLM judgment.",
+        )
+
+        decision = compose_audit_decision(receipt, judgment)
+
+        self.assertTrue(decision.item_extraction_warning)
+        self.assertFalse(decision.math_error)
+        self.assertFalse(decision.needs_audit)
+        self.assertIn("item_extraction_warning=True", decision.reasoning)
 
 
 if __name__ == "__main__":

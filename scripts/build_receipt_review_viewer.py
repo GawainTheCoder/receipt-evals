@@ -810,6 +810,7 @@ def html_document(manifest: dict[str, Any]) -> str:
       ["amount_over_limit"],
       ["math_error"],
       ["handwritten_x"],
+      ["item_extraction_warning"],
       ["needs_audit"],
     ];
 

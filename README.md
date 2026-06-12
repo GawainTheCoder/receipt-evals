@@ -12,6 +12,14 @@ The audit step is split between the model and plain code. The LLM judges only
 are computed deterministically from the extracted amounts, and `needs_audit` is
 the OR of the four flags (see `src/receipt_review/steps/audit.py`).
 
+`math_error` covers only summary-level arithmetic (subtotal + tax vs total,
+falling back to item totals when subtotal is missing). Item-line
+inconsistencies — duplicated lines, tax/tender lines read as items, misread
+unit prices — set a separate `item_extraction_warning` field instead, because
+on printed receipts they almost always indicate extraction noise rather than
+a receipt whose math is actually wrong. The warning is a data-quality signal
+and does not feed `needs_audit`.
+
 ## Setup
 
 ```bash

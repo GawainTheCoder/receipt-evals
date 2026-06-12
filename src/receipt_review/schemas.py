@@ -51,6 +51,9 @@ class AuditDecision(StrictModel):
     amount_over_limit: bool
     math_error: bool
     handwritten_x: bool
+    # Data-quality signal, not a policy flag: item lines disagree with a
+    # consistent summary. Intentionally excluded from needs_audit.
+    item_extraction_warning: bool
     reasoning: str
     needs_audit: bool
 

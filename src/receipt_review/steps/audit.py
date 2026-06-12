@@ -73,45 +73,69 @@ def line_total_inconsistency(item: ReceiptItem, index: int) -> str | None:
     return f"items[{index}]: total {line_total} matches no consistent reading of price x quantity"
 
 
-def check_math_error(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
-    """Flag arithmetic inconsistencies in the extracted receipt details.
-
-    Every check only runs when all of its inputs are present and parseable, so
-    missing values (null subtotal/tax, unparseable strings) never count as a
-    math error on their own.
-    """
-
-    problems: list[str] = []
-
+def known_item_totals(receipt_details: ReceiptDetails) -> tuple[list[Decimal], bool]:
     item_totals: list[Decimal] = []
     every_item_total_known = bool(receipt_details.items)
-    for index, item in enumerate(receipt_details.items):
+    for item in receipt_details.items:
         line_total = parse_amount(item.total)
         if line_total is None:
             every_item_total_known = False
         else:
             item_totals.append(line_total)
-        problem = line_total_inconsistency(item, index)
-        if problem:
-            problems.append(problem)
+    return item_totals, every_item_total_known
 
+
+def check_math_error(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
+    """Flag summary-level arithmetic failures: the printed receipt math is wrong.
+
+    The summary fields are the trusted reading: subtotal + tax must equal
+    total. Item lines are consulted only when subtotal is missing, because
+    item-level extraction is noisy (duplicated lines, tax and tender lines
+    read as items) and disagreement there is reported as
+    item_extraction_warning instead. Every check only runs when all of its
+    inputs are present and parseable, so missing values never count as a math
+    error on their own.
+    """
+
+    problems: list[str] = []
     subtotal = parse_amount(receipt_details.subtotal)
     tax = parse_amount(receipt_details.tax)
     total = parse_amount(receipt_details.total)
-    items_sum = sum(item_totals, Decimal("0"))
-
-    if every_item_total_known and subtotal is not None:
-        if abs(items_sum - subtotal) > MONEY_TOLERANCE:
-            problems.append(f"item totals sum {items_sum} != subtotal {subtotal}")
 
     if subtotal is not None and tax is not None and total is not None:
         if abs(subtotal + tax - total) > MONEY_TOLERANCE:
             problems.append(f"subtotal {subtotal} + tax {tax} != total {total}")
 
-    if subtotal is None and total is not None and every_item_total_known:
-        expected_total = items_sum + (tax if tax is not None else Decimal("0"))
-        if abs(expected_total - total) > MONEY_TOLERANCE:
-            problems.append(f"item totals sum {expected_total} != total {total}")
+    if subtotal is None and total is not None:
+        item_totals, every_item_total_known = known_item_totals(receipt_details)
+        if every_item_total_known:
+            expected_total = sum(item_totals, Decimal("0")) + (tax if tax is not None else Decimal("0"))
+            if abs(expected_total - total) > MONEY_TOLERANCE:
+                problems.append(f"item totals sum {expected_total} != total {total}")
+
+    return bool(problems), problems
+
+
+def check_item_extraction_warning(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
+    """Flag item-line inconsistencies that suggest extraction noise.
+
+    Receipts print machine-generated arithmetic, so when item lines disagree
+    with a consistent summary the extraction is the suspect, not the receipt.
+    This is a data-quality signal: it does not feed needs_audit.
+    """
+
+    problems: list[str] = []
+    for index, item in enumerate(receipt_details.items):
+        problem = line_total_inconsistency(item, index)
+        if problem:
+            problems.append(problem)
+
+    item_totals, every_item_total_known = known_item_totals(receipt_details)
+    subtotal = parse_amount(receipt_details.subtotal)
+    if every_item_total_known and subtotal is not None:
+        items_sum = sum(item_totals, Decimal("0"))
+        if abs(items_sum - subtotal) > MONEY_TOLERANCE:
+            problems.append(f"item totals sum {items_sum} != subtotal {subtotal}")
 
     return bool(problems), problems
 
@@ -121,13 +145,20 @@ def deterministic_checks_note(
     amount_over_limit: bool,
     math_error: bool,
     math_problems: list[str],
+    item_extraction_warning: bool,
+    warning_problems: list[str],
     receipt_details: ReceiptDetails,
 ) -> str:
     amount_note = f"total={receipt_details.total!r} limit={AUDIT_TOTAL_LIMIT} -> amount_over_limit={amount_over_limit}"
     math_note = (
-        f"math_error={math_error}" + (f" ({'; '.join(math_problems)})" if math_problems else " (all checks consistent)")
+        f"math_error={math_error}"
+        + (f" ({'; '.join(math_problems)})" if math_problems else " (summary math consistent)")
     )
-    return f"Deterministic checks: {amount_note}; {math_note}."
+    warning_note = (
+        f"item_extraction_warning={item_extraction_warning}"
+        + (f" ({'; '.join(warning_problems)})" if warning_problems else " (item lines consistent)")
+    )
+    return f"Deterministic checks: {amount_note}; {math_note}; {warning_note}."
 
 
 def judge_receipt_for_audit(
@@ -160,6 +191,7 @@ def judge_receipt_for_audit(
 def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgment) -> AuditDecision:
     amount_over_limit = check_amount_over_limit(receipt_details)
     math_error, math_problems = check_math_error(receipt_details)
+    item_extraction_warning, warning_problems = check_item_extraction_warning(receipt_details)
     needs_audit = any(
         (
             judgment.not_travel_related,
@@ -175,6 +207,8 @@ def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgm
             amount_over_limit=amount_over_limit,
             math_error=math_error,
             math_problems=math_problems,
+            item_extraction_warning=item_extraction_warning,
+            warning_problems=warning_problems,
             receipt_details=receipt_details,
         )
     )
@@ -184,6 +218,7 @@ def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgm
         amount_over_limit=amount_over_limit,
         math_error=math_error,
         handwritten_x=judgment.handwritten_x,
+        item_extraction_warning=item_extraction_warning,
         reasoning=reasoning,
         needs_audit=needs_audit,
     )
