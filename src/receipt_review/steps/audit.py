@@ -92,7 +92,7 @@ def check_math_error(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
     total. Item lines are consulted only when subtotal is missing, because
     item-level extraction is noisy (duplicated lines, tax and tender lines
     read as items) and disagreement there is reported as
-    item_extraction_warning instead. Every check only runs when all of its
+    line_item_extraction_warning instead. Every check only runs when all of its
     inputs are present and parseable, so missing values never count as a math
     error on their own.
     """
@@ -116,7 +116,7 @@ def check_math_error(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
     return bool(problems), problems
 
 
-def check_item_extraction_warning(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
+def check_line_item_extraction_warning(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
     """Flag item-line inconsistencies that suggest extraction noise.
 
     Receipts print machine-generated arithmetic, so when item lines disagree
@@ -140,12 +140,18 @@ def check_item_extraction_warning(receipt_details: ReceiptDetails) -> tuple[bool
     return bool(problems), problems
 
 
+def check_item_extraction_warning(receipt_details: ReceiptDetails) -> tuple[bool, list[str]]:
+    """Backward-compatible alias for the old helper name."""
+
+    return check_line_item_extraction_warning(receipt_details)
+
+
 def deterministic_checks_note(
     *,
     amount_over_limit: bool,
     math_error: bool,
     math_problems: list[str],
-    item_extraction_warning: bool,
+    line_item_extraction_warning: bool,
     warning_problems: list[str],
     receipt_details: ReceiptDetails,
 ) -> str:
@@ -155,7 +161,7 @@ def deterministic_checks_note(
         + (f" ({'; '.join(math_problems)})" if math_problems else " (summary math consistent)")
     )
     warning_note = (
-        f"item_extraction_warning={item_extraction_warning}"
+        f"line_item_extraction_warning={line_item_extraction_warning}"
         + (f" ({'; '.join(warning_problems)})" if warning_problems else " (item lines consistent)")
     )
     return f"Deterministic checks: {amount_note}; {math_note}; {warning_note}."
@@ -191,7 +197,7 @@ def judge_receipt_for_audit(
 def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgment) -> AuditDecision:
     amount_over_limit = check_amount_over_limit(receipt_details)
     math_error, math_problems = check_math_error(receipt_details)
-    item_extraction_warning, warning_problems = check_item_extraction_warning(receipt_details)
+    line_item_extraction_warning, warning_problems = check_line_item_extraction_warning(receipt_details)
     needs_audit = any(
         (
             judgment.not_travel_related,
@@ -207,7 +213,7 @@ def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgm
             amount_over_limit=amount_over_limit,
             math_error=math_error,
             math_problems=math_problems,
-            item_extraction_warning=item_extraction_warning,
+            line_item_extraction_warning=line_item_extraction_warning,
             warning_problems=warning_problems,
             receipt_details=receipt_details,
         )
@@ -218,7 +224,7 @@ def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgm
         amount_over_limit=amount_over_limit,
         math_error=math_error,
         handwritten_x=judgment.handwritten_x,
-        item_extraction_warning=item_extraction_warning,
+        line_item_extraction_warning=line_item_extraction_warning,
         reasoning=reasoning,
         needs_audit=needs_audit,
     )

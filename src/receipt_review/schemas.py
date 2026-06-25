@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class Location(StrictModel):
@@ -51,9 +51,14 @@ class AuditDecision(StrictModel):
     amount_over_limit: bool
     math_error: bool
     handwritten_x: bool
-    # Data-quality signal, not a policy flag: item lines disagree with a
-    # consistent summary. Intentionally excluded from needs_audit.
-    item_extraction_warning: bool
+    # Data-quality signal, not a policy flag: extracted item lines disagree
+    # with a consistent summary. Intentionally excluded from needs_audit.
+    line_item_extraction_warning: bool = Field(
+        validation_alias=AliasChoices(
+            "line_item_extraction_warning",
+            "item_extraction_warning",
+        )
+    )
     reasoning: str
     needs_audit: bool
 

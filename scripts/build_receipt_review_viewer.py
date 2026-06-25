@@ -12,10 +12,28 @@ from receipt_review.graders import RECEIPT_GRADERS, grade_receipt
 
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+LINE_ITEM_WARNING_FIELD = "line_item_extraction_warning"
+LEGACY_LINE_ITEM_WARNING_FIELD = "item_extraction_warning"
 
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def normalize_audit_fields(audit: dict[str, Any] | None) -> dict[str, Any] | None:
+    if audit is None:
+        return None
+    normalized = dict(audit)
+    if LINE_ITEM_WARNING_FIELD not in normalized and LEGACY_LINE_ITEM_WARNING_FIELD in normalized:
+        normalized[LINE_ITEM_WARNING_FIELD] = normalized[LEGACY_LINE_ITEM_WARNING_FIELD]
+    if isinstance(normalized.get("reasoning"), str):
+        normalized["reasoning"] = re.sub(
+            rf"(?<![A-Za-z0-9_]){LEGACY_LINE_ITEM_WARNING_FIELD}(?![A-Za-z0-9_])",
+            LINE_ITEM_WARNING_FIELD,
+            normalized["reasoning"],
+        )
+    normalized.pop(LEGACY_LINE_ITEM_WARNING_FIELD, None)
+    return normalized
 
 
 def base_receipt_stem(stem: str) -> str:
@@ -83,7 +101,7 @@ def matching_review_runs(
 
         audit_path = audit_dir / extraction_path.name
         system_extraction = read_json(extraction_path)
-        system_audit = read_json(audit_path) if audit_path.exists() else None
+        system_audit = normalize_audit_fields(read_json(audit_path)) if audit_path.exists() else None
         grades = (
             grade_receipt(
                 reference_audit=reference_audit,
@@ -135,7 +153,7 @@ def build_manifest(
         stem = extraction_path.stem
         audit_path = reference_audit_dir / extraction_path.name
         reference_extraction = read_json(extraction_path)
-        reference_audit = read_json(audit_path) if audit_path.exists() else None
+        reference_audit = normalize_audit_fields(read_json(audit_path)) if audit_path.exists() else None
         receipts.append(
             {
                 "stem": stem,
@@ -810,7 +828,7 @@ def html_document(manifest: dict[str, Any]) -> str:
       ["amount_over_limit"],
       ["math_error"],
       ["handwritten_x"],
-      ["item_extraction_warning"],
+      ["line_item_extraction_warning"],
       ["needs_audit"],
     ];
 
