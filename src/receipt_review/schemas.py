@@ -32,6 +32,7 @@ class ReceiptDetails(StrictModel):
     tax: str | None
     total: str | None
     handwritten_notes: list[str]
+    handwritten_x_present: bool | None = None
 
 
 class AuditJudgment(StrictModel):

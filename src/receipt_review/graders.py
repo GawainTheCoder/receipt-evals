@@ -100,7 +100,10 @@ def audit_policy_consistency(context: GraderContext) -> GradeResult:
 
 
 def has_explicit_handwritten_x(extraction: JsonObject) -> bool:
-    """Derive whether extraction captured an explicit standalone handwritten X note."""
+    """Derive whether extraction captured an explicit standalone handwritten X."""
+
+    if extraction.get("handwritten_x_present") is not None:
+        return extraction.get("handwritten_x_present") is True
 
     handwritten_notes = extraction.get("handwritten_notes", [])
     if not isinstance(handwritten_notes, list):
@@ -197,7 +200,9 @@ def handwritten_x_extraction_match(context: GraderContext) -> GradeResult:
         "actual": actual,
         "details": {
             "reference_handwritten_notes": context.reference_extraction.get("handwritten_notes"),
+            "reference_handwritten_x_present": context.reference_extraction.get("handwritten_x_present"),
             "system_handwritten_notes": context.system_extraction.get("handwritten_notes"),
+            "system_handwritten_x_present": context.system_extraction.get("handwritten_x_present"),
         },
     }
 
@@ -216,7 +221,7 @@ RECEIPT_GRADERS = (
     Grader(
         name="handwritten_x_extraction_match",
         comment=(
-            "Passes when reference and system extraction agree on whether handwritten_notes "
+            "Passes when reference and system extraction agree on whether the receipt "
             "contains an explicit standalone handwritten X."
         ),
         grade=handwritten_x_extraction_match,
