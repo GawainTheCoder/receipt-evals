@@ -4,6 +4,7 @@ import unittest
 from decimal import Decimal
 
 from receipt_review.schemas import AuditDecision, AuditJudgment, Location, ReceiptDetails, ReceiptItem
+from receipt_review.graders import has_explicit_handwritten_x
 from receipt_review.steps.audit import (
     check_amount_over_limit,
     check_item_extraction_warning,
@@ -38,6 +39,8 @@ def make_receipt(
     subtotal: str | None = None,
     tax: str | None = None,
     total: str | None = None,
+    handwritten_notes: list[str] | None = None,
+    handwritten_x_present: bool | None = None,
 ) -> ReceiptDetails:
     return ReceiptDetails(
         merchant="Test Merchant",
@@ -47,7 +50,8 @@ def make_receipt(
         subtotal=subtotal,
         tax=tax,
         total=total,
-        handwritten_notes=[],
+        handwritten_notes=handwritten_notes or [],
+        handwritten_x_present=handwritten_x_present,
     )
 
 
@@ -181,7 +185,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertFalse(has_warning)
         self.assertEqual(warning_problems, [])
 
-    def test_math_error_uses_item_totals_only_when_subtotal_is_missing(self) -> None:
+    def test_item_total_mismatch_without_summary_is_not_math_error(self) -> None:
         receipt = make_receipt(
             items=[make_item(item_price="10.00", quantity="1", total="10.00")],
             subtotal=None,
@@ -191,8 +195,27 @@ class DeterministicAuditChecksTest(unittest.TestCase):
 
         has_error, problems = check_math_error(receipt)
 
-        self.assertTrue(has_error)
-        self.assertTrue(any("item totals sum" in problem and "total" in problem for problem in problems))
+        self.assertFalse(has_error)
+        self.assertEqual(problems, [])
+
+    def test_item_reconciliation_without_summary_does_not_drive_needs_audit(self) -> None:
+        receipt = make_receipt(
+            items=[make_item(item_price="10.00", quantity="1", total="10.00")],
+            subtotal=None,
+            tax="1.00",
+            total="20.00",
+        )
+        judgment = AuditJudgment(
+            not_travel_related=False,
+            handwritten_x=False,
+            reasoning="LLM judgment.",
+        )
+
+        decision = compose_audit_decision(receipt, judgment)
+
+        self.assertFalse(decision.math_error)
+        self.assertFalse(decision.needs_audit)
+        self.assertIn("summary math not checked", decision.reasoning)
 
     def test_compose_audit_decision_ors_all_policy_flags(self) -> None:
         receipt = make_receipt(
@@ -213,6 +236,23 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertFalse(decision.math_error)
         self.assertTrue(decision.needs_audit)
         self.assertIn("Deterministic checks:", decision.reasoning)
+
+    def test_handwritten_x_present_feeds_needs_audit_when_judgment_misses_it(self) -> None:
+        receipt = make_receipt(
+            total="43.13",
+            handwritten_notes=["559139", "Tundra", "Monterey"],
+            handwritten_x_present=True,
+        )
+        judgment = AuditJudgment(
+            not_travel_related=False,
+            handwritten_x=False,
+            reasoning="LLM judgment missed the extracted mark.",
+        )
+
+        decision = compose_audit_decision(receipt, judgment)
+
+        self.assertTrue(decision.handwritten_x)
+        self.assertTrue(decision.needs_audit)
 
     def test_line_item_extraction_warning_does_not_feed_needs_audit(self) -> None:
         receipt = make_receipt(
@@ -253,6 +293,28 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertTrue(decision.line_item_extraction_warning)
         self.assertIn("line_item_extraction_warning", decision.model_dump())
         self.assertNotIn("item_extraction_warning", decision.model_dump())
+
+    def test_receipt_details_accepts_legacy_extraction_without_handwritten_x_present(self) -> None:
+        receipt = ReceiptDetails.model_validate(
+            {
+                "merchant": "Test Merchant",
+                "location": {"city": None, "state": None, "zipcode": None},
+                "time": None,
+                "items": [],
+                "subtotal": None,
+                "tax": None,
+                "total": "10.00",
+                "handwritten_notes": ["not an x"],
+            }
+        )
+
+        self.assertIsNone(receipt.handwritten_x_present)
+
+    def test_has_explicit_handwritten_x_uses_structured_field_or_notes(self) -> None:
+        self.assertTrue(has_explicit_handwritten_x({"handwritten_x_present": True, "handwritten_notes": []}))
+        self.assertTrue(has_explicit_handwritten_x({"handwritten_notes": ["X"]}))
+        self.assertFalse(has_explicit_handwritten_x({"handwritten_x_present": False, "handwritten_notes": ["Nissan"]}))
+        self.assertFalse(has_explicit_handwritten_x({"handwritten_x_present": False, "handwritten_notes": ["X"]}))
 
 
 if __name__ == "__main__":

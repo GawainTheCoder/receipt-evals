@@ -811,6 +811,7 @@ def html_document(manifest: dict[str, Any]) -> str:
       ["tax"],
       ["total"],
       ["handwritten_notes"],
+      ["handwritten_x_present"],
     ];
 
     const ITEM_FIELDS = [
