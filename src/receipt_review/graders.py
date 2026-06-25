@@ -102,7 +102,7 @@ def audit_policy_consistency(context: GraderContext) -> GradeResult:
 def has_explicit_handwritten_x(extraction: JsonObject) -> bool:
     """Derive whether extraction captured an explicit standalone handwritten X."""
 
-    if extraction.get("handwritten_x_present") is not None:
+    if "handwritten_x_present" in extraction:
         return extraction.get("handwritten_x_present") is True
 
     handwritten_notes = extraction.get("handwritten_notes", [])

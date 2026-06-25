@@ -15,7 +15,9 @@ You judge two audit flags for a receipt from its structured details.
 Use this v0 audit policy:
 - Travel-related expenses include gas, fuel, hotel, airfare, and car rental. If the receipt shows gas or fuel, not_travel_related is false.
 - not_travel_related is true when the merchant and purchased items are not travel-related.
-- handwritten_x is true when handwritten_x_present is true or handwritten_notes contains an explicit standalone handwritten "X".
+- handwritten_x is true when handwritten_x_present is present and true.
+- If handwritten_x_present is present as false or null, do not infer handwritten_x from handwritten_notes.
+- For legacy details that omit handwritten_x_present, handwritten_x is true only when handwritten_notes contains an explicit standalone handwritten "X".
 
 Give concise reasoning grounded only in the structured receipt details provided.
 """.strip()
@@ -189,7 +191,7 @@ def judge_receipt_for_audit(
         user_content=[
             {
                 "type": "input_text",
-                "text": receipt_details.model_dump_json(indent=2),
+                "text": receipt_details.model_dump_json(indent=2, exclude_unset=True),
             }
         ],
     )
@@ -200,8 +202,8 @@ def compose_audit_decision(receipt_details: ReceiptDetails, judgment: AuditJudgm
     math_error, math_problems = check_math_error(receipt_details)
     line_item_extraction_warning, warning_problems = check_line_item_extraction_warning(receipt_details)
     handwritten_x = (
-        receipt_details.handwritten_x_present
-        if receipt_details.handwritten_x_present is not None
+        receipt_details.handwritten_x_present is True
+        if "handwritten_x_present" in receipt_details.model_fields_set
         else judgment.handwritten_x
     )
     needs_audit = any(

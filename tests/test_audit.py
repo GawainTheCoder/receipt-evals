@@ -33,6 +33,9 @@ def make_item(
     )
 
 
+HANDWRITTEN_X_PRESENT_UNSET = object()
+
+
 def make_receipt(
     *,
     items: list[ReceiptItem] | None = None,
@@ -40,19 +43,21 @@ def make_receipt(
     tax: str | None = None,
     total: str | None = None,
     handwritten_notes: list[str] | None = None,
-    handwritten_x_present: bool | None = None,
+    handwritten_x_present: bool | None | object = HANDWRITTEN_X_PRESENT_UNSET,
 ) -> ReceiptDetails:
-    return ReceiptDetails(
-        merchant="Test Merchant",
-        location=Location(city=None, state=None, zipcode=None),
-        time=None,
-        items=items or [],
-        subtotal=subtotal,
-        tax=tax,
-        total=total,
-        handwritten_notes=handwritten_notes or [],
-        handwritten_x_present=handwritten_x_present,
-    )
+    receipt_payload = {
+        "merchant": "Test Merchant",
+        "location": Location(city=None, state=None, zipcode=None),
+        "time": None,
+        "items": items or [],
+        "subtotal": subtotal,
+        "tax": tax,
+        "total": total,
+        "handwritten_notes": handwritten_notes or [],
+    }
+    if handwritten_x_present is not HANDWRITTEN_X_PRESENT_UNSET:
+        receipt_payload["handwritten_x_present"] = handwritten_x_present
+    return ReceiptDetails(**receipt_payload)
 
 
 class DeterministicAuditChecksTest(unittest.TestCase):
@@ -254,6 +259,39 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertTrue(decision.handwritten_x)
         self.assertTrue(decision.needs_audit)
 
+    def test_handwritten_x_present_null_blocks_notes_fallback(self) -> None:
+        receipt = make_receipt(
+            total="10.00",
+            handwritten_notes=["X"],
+            handwritten_x_present=None,
+        )
+        judgment = AuditJudgment(
+            not_travel_related=False,
+            handwritten_x=True,
+            reasoning="Legacy note fallback saw an X.",
+        )
+
+        decision = compose_audit_decision(receipt, judgment)
+
+        self.assertFalse(decision.handwritten_x)
+        self.assertFalse(decision.needs_audit)
+
+    def test_legacy_receipt_without_handwritten_x_present_uses_judgment(self) -> None:
+        receipt = make_receipt(
+            total="10.00",
+            handwritten_notes=["X"],
+        )
+        judgment = AuditJudgment(
+            not_travel_related=False,
+            handwritten_x=True,
+            reasoning="Legacy note fallback saw an X.",
+        )
+
+        decision = compose_audit_decision(receipt, judgment)
+
+        self.assertTrue(decision.handwritten_x)
+        self.assertTrue(decision.needs_audit)
+
     def test_line_item_extraction_warning_does_not_feed_needs_audit(self) -> None:
         receipt = make_receipt(
             items=[
@@ -313,6 +351,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
     def test_has_explicit_handwritten_x_uses_structured_field_or_notes(self) -> None:
         self.assertTrue(has_explicit_handwritten_x({"handwritten_x_present": True, "handwritten_notes": []}))
         self.assertTrue(has_explicit_handwritten_x({"handwritten_notes": ["X"]}))
+        self.assertFalse(has_explicit_handwritten_x({"handwritten_x_present": None, "handwritten_notes": ["X"]}))
         self.assertFalse(has_explicit_handwritten_x({"handwritten_x_present": False, "handwritten_notes": ["Nissan"]}))
         self.assertFalse(has_explicit_handwritten_x({"handwritten_x_present": False, "handwritten_notes": ["X"]}))
 
