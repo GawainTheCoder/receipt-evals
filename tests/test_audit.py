@@ -3,10 +3,11 @@ from __future__ import annotations
 import unittest
 from decimal import Decimal
 
-from receipt_review.schemas import AuditJudgment, Location, ReceiptDetails, ReceiptItem
+from receipt_review.schemas import AuditDecision, AuditJudgment, Location, ReceiptDetails, ReceiptItem
 from receipt_review.steps.audit import (
     check_amount_over_limit,
     check_item_extraction_warning,
+    check_line_item_extraction_warning,
     check_math_error,
     compose_audit_decision,
     parse_amount,
@@ -105,12 +106,25 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         )
 
         has_error, math_problems = check_math_error(receipt)
-        has_warning, warning_problems = check_item_extraction_warning(receipt)
+        has_warning, warning_problems = check_line_item_extraction_warning(receipt)
 
         self.assertFalse(has_error)
         self.assertEqual(math_problems, [])
         self.assertTrue(has_warning)
         self.assertTrue(any("item totals sum" in problem for problem in warning_problems))
+
+    def test_legacy_item_extraction_warning_helper_alias_still_works(self) -> None:
+        receipt = make_receipt(
+            items=[make_item(item_price="4.00", quantity="2", total="11.00")],
+            subtotal=None,
+            tax=None,
+            total="11.00",
+        )
+
+        self.assertEqual(
+            check_item_extraction_warning(receipt),
+            check_line_item_extraction_warning(receipt),
+        )
 
     def test_math_error_flags_subtotal_tax_total_mismatch(self) -> None:
         receipt = make_receipt(
@@ -147,7 +161,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         )
 
         has_error, math_problems = check_math_error(receipt)
-        has_warning, warning_problems = check_item_extraction_warning(receipt)
+        has_warning, warning_problems = check_line_item_extraction_warning(receipt)
 
         self.assertFalse(has_error)
         self.assertEqual(math_problems, [])
@@ -162,7 +176,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
             total="15.50",
         )
 
-        has_warning, warning_problems = check_item_extraction_warning(receipt)
+        has_warning, warning_problems = check_line_item_extraction_warning(receipt)
 
         self.assertFalse(has_warning)
         self.assertEqual(warning_problems, [])
@@ -200,7 +214,7 @@ class DeterministicAuditChecksTest(unittest.TestCase):
         self.assertTrue(decision.needs_audit)
         self.assertIn("Deterministic checks:", decision.reasoning)
 
-    def test_item_extraction_warning_does_not_feed_needs_audit(self) -> None:
+    def test_line_item_extraction_warning_does_not_feed_needs_audit(self) -> None:
         receipt = make_receipt(
             items=[
                 make_item(item_price="10.00", quantity="1", total="10.00"),
@@ -218,10 +232,27 @@ class DeterministicAuditChecksTest(unittest.TestCase):
 
         decision = compose_audit_decision(receipt, judgment)
 
-        self.assertTrue(decision.item_extraction_warning)
+        self.assertTrue(decision.line_item_extraction_warning)
         self.assertFalse(decision.math_error)
         self.assertFalse(decision.needs_audit)
-        self.assertIn("item_extraction_warning=True", decision.reasoning)
+        self.assertIn("line_item_extraction_warning=True", decision.reasoning)
+
+    def test_audit_decision_accepts_legacy_item_extraction_warning_key(self) -> None:
+        decision = AuditDecision.model_validate(
+            {
+                "not_travel_related": False,
+                "amount_over_limit": False,
+                "math_error": False,
+                "handwritten_x": False,
+                "item_extraction_warning": True,
+                "reasoning": "legacy saved audit",
+                "needs_audit": False,
+            }
+        )
+
+        self.assertTrue(decision.line_item_extraction_warning)
+        self.assertIn("line_item_extraction_warning", decision.model_dump())
+        self.assertNotIn("item_extraction_warning", decision.model_dump())
 
 
 if __name__ == "__main__":

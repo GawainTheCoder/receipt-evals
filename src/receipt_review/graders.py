@@ -10,13 +10,16 @@ from pydantic import ValidationError
 from receipt_review.schemas import ReceiptDetails
 from receipt_review.steps.audit import (
     check_amount_over_limit,
-    check_item_extraction_warning,
+    check_line_item_extraction_warning,
     check_math_error,
 )
 
 
 JsonObject = dict[str, Any]
 GradeResult = dict[str, Any]
+
+LINE_ITEM_WARNING_FIELD = "line_item_extraction_warning"
+LEGACY_LINE_ITEM_WARNING_FIELD = "item_extraction_warning"
 
 
 @dataclass(frozen=True)
@@ -57,8 +60,8 @@ def audit_field_match(field_name: str) -> Callable[[GraderContext], GradeResult]
     """Create an exact-match grader for one boolean field in the audit JSON."""
 
     def grade(context: GraderContext) -> GradeResult:
-        expected = context.reference_audit.get(field_name)
-        actual = context.system_audit.get(field_name)
+        expected = audit_value(context.reference_audit, field_name)
+        actual = audit_value(context.system_audit, field_name)
         return {
             "passed": expected == actual,
             "expected": expected,
@@ -66,6 +69,12 @@ def audit_field_match(field_name: str) -> Callable[[GraderContext], GradeResult]
         }
 
     return grade
+
+
+def audit_value(audit: JsonObject, field_name: str) -> Any:
+    if field_name == LINE_ITEM_WARNING_FIELD and field_name not in audit:
+        return audit.get(LEGACY_LINE_ITEM_WARNING_FIELD)
+    return audit.get(field_name)
 
 
 def audit_policy_consistency(context: GraderContext) -> GradeResult:
@@ -117,20 +126,20 @@ def derived_deterministic_flags(extraction: JsonObject) -> JsonObject | None:
     except ValidationError:
         return None
     math_error, math_problems = check_math_error(receipt_details)
-    item_extraction_warning, warning_problems = check_item_extraction_warning(receipt_details)
+    line_item_extraction_warning, warning_problems = check_line_item_extraction_warning(receipt_details)
     return {
         "amount_over_limit": check_amount_over_limit(receipt_details),
         "math_error": math_error,
-        "item_extraction_warning": item_extraction_warning,
+        LINE_ITEM_WARNING_FIELD: line_item_extraction_warning,
         "problems": {
             "math_error": math_problems,
-            "item_extraction_warning": warning_problems,
+            LINE_ITEM_WARNING_FIELD: warning_problems,
         },
     }
 
 
-def item_extraction_warning_extraction_match(context: GraderContext) -> GradeResult:
-    """Check whether reference and system extractions agree on the derived item warning.
+def line_item_extraction_warning_extraction_match(context: GraderContext) -> GradeResult:
+    """Check whether reference and system extractions agree on the derived line-item warning.
 
     Both sides run the same deterministic check, so this measures
     extraction-induced divergence, not the correctness of the check itself.
@@ -138,15 +147,15 @@ def item_extraction_warning_extraction_match(context: GraderContext) -> GradeRes
 
     reference = derived_deterministic_flags(context.reference_extraction)
     system = derived_deterministic_flags(context.system_extraction)
-    expected = reference["item_extraction_warning"] if reference else None
-    actual = system["item_extraction_warning"] if system else None
+    expected = reference[LINE_ITEM_WARNING_FIELD] if reference else None
+    actual = system[LINE_ITEM_WARNING_FIELD] if system else None
     return {
         "passed": expected is not None and expected == actual,
         "expected": expected,
         "actual": actual,
         "details": {
-            "reference_problems": reference["problems"]["item_extraction_warning"] if reference else None,
-            "system_problems": system["problems"]["item_extraction_warning"] if system else None,
+            "reference_problems": reference["problems"][LINE_ITEM_WARNING_FIELD] if reference else None,
+            "system_problems": system["problems"][LINE_ITEM_WARNING_FIELD] if system else None,
         },
     }
 
@@ -154,7 +163,7 @@ def item_extraction_warning_extraction_match(context: GraderContext) -> GradeRes
 DETERMINISTIC_FLAG_FIELDS = (
     "amount_over_limit",
     "math_error",
-    "item_extraction_warning",
+    LINE_ITEM_WARNING_FIELD,
 )
 
 
@@ -168,7 +177,7 @@ def deterministic_flags_consistency(context: GraderContext) -> GradeResult:
 
     derived = derived_deterministic_flags(context.system_extraction)
     expected = {field_name: derived[field_name] for field_name in DETERMINISTIC_FLAG_FIELDS} if derived else None
-    actual = {field_name: context.system_audit.get(field_name) for field_name in DETERMINISTIC_FLAG_FIELDS}
+    actual = {field_name: audit_value(context.system_audit, field_name) for field_name in DETERMINISTIC_FLAG_FIELDS}
     return {
         "passed": expected is not None and expected == actual,
         "expected": expected,
@@ -238,12 +247,12 @@ RECEIPT_GRADERS = (
         grade=audit_field_match("handwritten_x"),
     ),
     Grader(
-        name="item_extraction_warning_extraction_match",
+        name="line_item_extraction_warning_extraction_match",
         comment=(
             "Passes when reference and system extraction agree on the derived "
-            "item_extraction_warning (item lines inconsistent with the summary fields)."
+            "line_item_extraction_warning (item lines inconsistent with the summary fields)."
         ),
-        grade=item_extraction_warning_extraction_match,
+        grade=line_item_extraction_warning_extraction_match,
     ),
     Grader(
         name="audit_policy_consistency",
@@ -257,7 +266,7 @@ RECEIPT_GRADERS = (
         name="deterministic_flags_consistency",
         comment=(
             "Passes when the saved audit's deterministic flags (amount_over_limit, math_error, "
-            "item_extraction_warning) match a recompute from the run's own extraction with current code."
+            "line_item_extraction_warning) match a recompute from the run's own extraction with current code."
         ),
         grade=deterministic_flags_consistency,
     ),
@@ -268,7 +277,7 @@ RECEIPT_GRADERS = (
 EXTRACTION_DEPENDENT_GRADERS = frozenset(
     {
         "handwritten_x_extraction_match",
-        "item_extraction_warning_extraction_match",
+        "line_item_extraction_warning_extraction_match",
         "deterministic_flags_consistency",
     }
 )
